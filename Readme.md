@@ -42,10 +42,14 @@ Download `SecureProxySDK.swift` and add it to your Xcode project.
 ```swift
 import SecureProxySDK
 
+// SECURITY BEST PRACTICE: Store secret key on remote server
+// Fetch secret key from your secure backend or iCloud
+let secretKey = try await fetchSecretKeyFromServer() // Your implementation
+
 // Initialize with split-key authentication for enhanced security
 let client = SecureProxyClient(
-    proxyKey: "pk_your_proxy_key_here",    // First half of split key
-    secretKey: "sk_your_secret_key_here"   // Second half for HMAC signing
+    proxyKey: "pk_your_proxy_key_here",    // First half - can be stored in app
+    secretKey: secretKey                   // Second half - fetched from remote server
 )
 
 // Simple text completion
@@ -68,6 +72,62 @@ let analysis = try await client.vision(
 )
 ```
 
+### Secure Key Storage Examples
+
+#### Option 1: Your Own Backend Server
+```swift
+func fetchSecretKeyFromServer() async throws -> String {
+    let url = URL(string: "https://your-backend.com/api/secret-key")!
+    var request = URLRequest(url: url)
+    request.setValue("Bearer \(userAuthToken)", forHTTPHeaderField: "Authorization")
+    
+    let (data, _) = try await URLSession.shared.data(for: request)
+    let response = try JSONDecoder().decode(SecretKeyResponse.self, from: data)
+    return response.secretKey
+}
+```
+
+#### Option 2: iCloud Key-Value Store
+```swift
+import Foundation
+
+func fetchSecretKeyFromiCloud() async throws -> String {
+    return await withCheckedContinuation { continuation in
+        let store = NSUbiquitousKeyValueStore.default
+        if let secretKey = store.string(forKey: "secure_proxy_secret_key") {
+            continuation.resume(returning: secretKey)
+        } else {
+            continuation.resume(throwing: SecureProxyError.invalidSecretKey)
+        }
+    }
+}
+```
+
+#### Option 3: Keychain with Server Sync
+```swift
+import Security
+
+func fetchSecretKeyFromKeychain() throws -> String {
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrAccount as String: "secureproxy_secret_key",
+        kSecReturnData as String: true,
+        kSecAttrSynchronizable as String: true // Syncs across devices
+    ]
+    
+    var result: AnyObject?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    
+    guard status == errSecSuccess,
+          let data = result as? Data,
+          let secretKey = String(data: data, encoding: .utf8) else {
+        throw SecureProxyError.invalidSecretKey
+    }
+    
+    return secretKey
+}
+```
+
 ## 📱 SwiftUI Integration
 
 ```swift
@@ -78,11 +138,7 @@ struct ChatView: View {
     @State private var inputText = ""
     @State private var response = ""
     @State private var isLoading = false
-    
-    private let client = SecureProxyClient(
-        proxyKey: "pk_your_proxy_key_here",
-        secretKey: "sk_your_secret_key_here"
-    )
+    @State private var client: SecureProxyClient?
     
     var body: some View {
         VStack {
@@ -94,22 +150,49 @@ struct ChatView: View {
                 
                 Button("Send") {
                     Task {
-                        isLoading = true
-                        do {
-                            response = try await client.complete(inputText)
-                        } catch {
-                            response = "Error: \(error.localizedDescription)"
-                        }
-                        isLoading = false
+                        await sendMessage()
                     }
                 }
-                .disabled(isLoading)
+                .disabled(isLoading || client == nil)
             }
             .padding()
         }
+        .onAppear {
+            Task {
+                await initializeClient()
+            }
+        }
+    }
+    
+    private func initializeClient() async {
+        do {
+            // Fetch secret key from secure remote location
+            let secretKey = try await fetchSecretKeyFromServer()
+            
+            client = SecureProxyClient(
+                proxyKey: "pk_your_proxy_key_here",
+                secretKey: secretKey
+            )
+        } catch {
+            response = "Failed to initialize: \(error.localizedDescription)"
+        }
+    }
+    
+    private func sendMessage() async {
+        guard let client = client else { return }
+        
+        isLoading = true
+        do {
+            response = try await client.complete(inputText)
+        } catch {
+            response = "Error: \(error.localizedDescription)"
+        }
+        isLoading = false
     }
 }
 ```
+
+> **⚠️ SECURITY WARNING**: Never hardcode the secret key in your app binary! Always fetch it from a secure remote location (your backend server, iCloud, encrypted keychain, etc.) to maintain the security benefits of the split-key architecture.
 
 ## 🎯 Supported Models
 
@@ -199,7 +282,7 @@ let analysis = try await client.vision(
 
 ### Split-Key Security Architecture
 - **Proxy Key (1st half)**: Stored in client app, can be extracted but useless alone
-- **Secret Key (2nd half)**: Used for HMAC signing, never transmitted to server
+- **Secret Key (2nd half)**: Should be stored on a remote server (iCloud, your backend, etc.) and fetched securely
 - **Complete Key**: Only exists temporarily on server during authentication
 
 ### Additional Security Layers
@@ -210,6 +293,16 @@ let analysis = try await client.vision(
 - **Timestamp Validation**: Prevents replay attacks with request timestamps
 - **Rate Limiting**: Configurable limits per project and user
 - **Domain Restrictions**: Optional IP/domain allowlisting for production apps
+
+### Security Best Practices
+> **⚠️ CRITICAL**: For maximum security, follow these practices:
+
+1. **Never hardcode the secret key** in your app binary
+2. **Store the secret key remotely** on your backend server or secure cloud service
+3. **Use HTTPS** when fetching the secret key from your server
+4. **Implement user authentication** before allowing secret key access
+5. **Cache the secret key securely** in memory only (not persistent storage)
+6. **Rotate keys regularly** through your SecureProxy dashboard
 
 ## 📊 Usage Monitoring
 
