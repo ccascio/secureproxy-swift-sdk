@@ -4,6 +4,7 @@
 
 import Foundation
 import SwiftUI
+import CryptoKit
 
 // MARK: - Public Types
 
@@ -60,16 +61,20 @@ public struct ChatResponse {
 
 public enum SecureProxyError: Error, LocalizedError {
     case invalidProxyKey
+    case invalidSecretKey
     case authenticationFailed
     case networkError(Error)
     case invalidResponse
     case tokenExpired
     case rateLimitExceeded
+    case hmacGenerationFailed
     
     public var errorDescription: String? {
         switch self {
         case .invalidProxyKey:
             return "Invalid proxy key provided"
+        case .invalidSecretKey:
+            return "Invalid secret key provided"
         case .authenticationFailed:
             return "Authentication failed"
         case .networkError(let error):
@@ -80,6 +85,8 @@ public enum SecureProxyError: Error, LocalizedError {
             return "Access token has expired"
         case .rateLimitExceeded:
             return "Rate limit exceeded"
+        case .hmacGenerationFailed:
+            return "Failed to generate HMAC signature"
         }
     }
 }
@@ -87,17 +94,42 @@ public enum SecureProxyError: Error, LocalizedError {
 // MARK: - Main SDK Class
 
 public class SecureProxyClient {
-    private let proxyKey: String
+    private let proxyKey: String      // First half of split key
+    private let secretKey: String     // Second half for HMAC signing
     private let baseURL: String
     private let urlSession: URLSession
     
     private var accessToken: String?
     private var tokenExpiry: Date = Date.distantPast
     
-    public init(proxyKey: String, baseURL: String = "https://api.secureproxy.com") {
+    public init(proxyKey: String, secretKey: String, baseURL: String = "https://api.secureproxy.com") {
         self.proxyKey = proxyKey
+        self.secretKey = secretKey
         self.baseURL = baseURL
         self.urlSession = URLSession.shared
+    }
+    
+    // Legacy initializer for backward compatibility
+    @available(*, deprecated, message: "Use init(proxyKey:secretKey:baseURL:) for enhanced security")
+    public convenience init(proxyKey: String, baseURL: String = "https://api.secureproxy.com") {
+        // For backward compatibility, treat the full key as proxy key and use empty secret
+        self.init(proxyKey: proxyKey, secretKey: "", baseURL: baseURL)
+    }
+    
+    // MARK: - HMAC Signing
+    
+    private func generateHMACSignature(payload: String) throws -> String {
+        guard !secretKey.isEmpty else {
+            throw SecureProxyError.invalidSecretKey
+        }
+        
+        guard let payloadData = payload.data(using: .utf8),
+              let keyData = secretKey.data(using: .utf8) else {
+            throw SecureProxyError.hmacGenerationFailed
+        }
+        
+        let hmac = HMAC<SHA256>.authenticationCode(for: payloadData, using: SymmetricKey(data: keyData))
+        return Data(hmac).map { String(format: "%02hhx", $0) }.joined()
     }
     
     // MARK: - Public Methods
@@ -200,13 +232,31 @@ private extension SecureProxyClient {
             return token
         }
         
-        // Request new token
+        // Request new token with HMAC authentication
         let url = URL(string: "\(baseURL)/api/auth/token")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let requestBody = ["proxyKey": proxyKey]
+        let requestBody: [String: Any]
+        
+        if secretKey.isEmpty {
+            // Legacy authentication mode
+            requestBody = ["proxyKey": proxyKey]
+        } else {
+            // New split-key HMAC authentication
+            let timestamp = String(Int64(Date().timeIntervalSince1970 * 1000)) // milliseconds
+            let payload = "\(proxyKey).\(timestamp)"
+            
+            let signature = try generateHMACSignature(payload: payload)
+            
+            requestBody = [
+                "proxyKey": proxyKey,
+                "timestamp": timestamp,
+                "signature": signature
+            ]
+        }
+        
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
         
         let (data, response) = try await urlSession.data(for: request)
@@ -297,8 +347,14 @@ public class SecureProxyManager: ObservableObject {
     @Published public var messages: [Message] = []
     @Published public var currentResponse = ""
     
-    public init(proxyKey: String, baseURL: String = "https://api.secureproxy.com") {
-        self.client = SecureProxyClient(proxyKey: proxyKey, baseURL: baseURL)
+    public init(proxyKey: String, secretKey: String, baseURL: String = "https://api.secureproxy.com") {
+        self.client = SecureProxyClient(proxyKey: proxyKey, secretKey: secretKey, baseURL: baseURL)
+    }
+    
+    // Legacy initializer for backward compatibility
+    @available(*, deprecated, message: "Use init(proxyKey:secretKey:baseURL:) for enhanced security")
+    public convenience init(proxyKey: String, baseURL: String = "https://api.secureproxy.com") {
+        self.init(proxyKey: proxyKey, secretKey: "", baseURL: baseURL)
     }
     
     public func sendMessage(_ content: String, model: String = "gpt-4o") async {

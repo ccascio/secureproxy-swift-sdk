@@ -14,8 +14,10 @@ A lightweight, secure Swift SDK for accessing LLM APIs (OpenAI, Anthropic, Googl
 - ❌ No usage control or monitoring per user/device
 - ❌ Billing abuse if keys are compromised
 
-**The Solution**: SecureProxy acts as a secure intermediary:
+**The Solution**: SecureProxy acts as a secure intermediary with **Split-Key Security**:
 - ✅ Your real API keys stay safe on our servers
+- ✅ **Split-key authentication**: API key split into two halves for enhanced security
+- ✅ **HMAC request signing**: All requests cryptographically signed to prevent tampering
 - ✅ JWT-based authentication with automatic token refresh
 - ✅ AES-256 encrypted storage of your LLM provider keys
 - ✅ Rate limiting and usage monitoring per project
@@ -40,8 +42,11 @@ Download `SecureProxySDK.swift` and add it to your Xcode project.
 ```swift
 import SecureProxySDK
 
-// Initialize with your proxy key from SecureProxy dashboard
-let client = SecureProxyClient(proxyKey: "pk_your_proxy_key_here")
+// Initialize with split-key authentication for enhanced security
+let client = SecureProxyClient(
+    proxyKey: "pk_your_proxy_key_here",    // First half of split key
+    secretKey: "sk_your_secret_key_here"   // Second half for HMAC signing
+)
 
 // Simple text completion
 let response = try await client.complete("Explain quantum computing in simple terms")
@@ -74,7 +79,10 @@ struct ChatView: View {
     @State private var response = ""
     @State private var isLoading = false
     
-    private let client = SecureProxyClient(proxyKey: "pk_your_proxy_key_here")
+    private let client = SecureProxyClient(
+        proxyKey: "pk_your_proxy_key_here",
+        secretKey: "sk_your_secret_key_here"
+    )
     
     var body: some View {
         VStack {
@@ -189,10 +197,17 @@ let analysis = try await client.vision(
 
 ## 🛡️ Security Features
 
+### Split-Key Security Architecture
+- **Proxy Key (1st half)**: Stored in client app, can be extracted but useless alone
+- **Secret Key (2nd half)**: Used for HMAC signing, never transmitted to server
+- **Complete Key**: Only exists temporarily on server during authentication
+
+### Additional Security Layers
 - **No API Key Exposure**: Your LLM provider keys never leave SecureProxy's secure servers
+- **HMAC-SHA256 Signing**: All authentication requests cryptographically signed
 - **JWT Authentication**: Short-lived tokens with automatic refresh
 - **AES-256 Encryption**: All stored API keys are encrypted at rest
-- **Request Signing**: Prevents request tampering and replay attacks
+- **Timestamp Validation**: Prevents replay attacks with request timestamps
 - **Rate Limiting**: Configurable limits per project and user
 - **Domain Restrictions**: Optional IP/domain allowlisting for production apps
 
@@ -212,7 +227,12 @@ Track your API usage through the SecureProxy Dashboard:
 
 ```swift
 class SecureProxyClient {
-    init(proxyKey: String, baseURL: String = "https://secure-token-proxy-ai.replit.app")
+    // Split-key authentication (recommended)
+    init(proxyKey: String, secretKey: String, baseURL: String = "https://api.secureproxy.com")
+    
+    // Legacy authentication (deprecated)
+    @available(*, deprecated, message: "Use init(proxyKey:secretKey:baseURL:) for enhanced security")
+    init(proxyKey: String, baseURL: String = "https://api.secureproxy.com")
     
     func complete(_ prompt: String, model: String = "gpt-4o") async throws -> String
     
@@ -248,11 +268,13 @@ struct Message {
 ```swift
 enum SecureProxyError: Error {
     case invalidProxyKey
+    case invalidSecretKey
     case authenticationFailed
     case networkError(Error)
     case invalidResponse
     case tokenExpired
     case rateLimitExceeded
+    case hmacGenerationFailed
 }
 ```
 
@@ -260,8 +282,10 @@ enum SecureProxyError: Error {
 
 1. **Sign up** at [secure-token-proxy-ai.replit.app](https://secure-token-proxy-ai.replit.app)
 2. **Add your LLM provider API keys** in the dashboard (OpenAI, Anthropic, etc.)
-3. **Create a project** and get your proxy key
-4. **Install this SDK** and start building!
+3. **Create a project** and get your split keys:
+   - **Proxy Key** (`pk_...`): First half of the split key
+   - **Secret Key** (`sk_...`): Second half used for HMAC signing
+4. **Install this SDK** and start building with enhanced security!
 
 ## 📝 Examples
 

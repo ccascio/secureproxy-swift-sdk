@@ -3,7 +3,10 @@ import PhotosUI
 import SecureProxySDK
 
 struct ImageAnalysisView: View {
-    @StateObject private var manager = SecureProxyManager(proxyKey: "pk_your_proxy_key_here")
+    @StateObject private var manager = SecureProxyManager(
+        proxyKey: "pk_your_proxy_key_here",
+        secretKey: "sk_your_secret_key_here"
+    )
     @State private var selectedImage: UIImage?
     @State private var imagePickerItem: PhotosPickerItem?
     @State private var prompt = "What's in this image?"

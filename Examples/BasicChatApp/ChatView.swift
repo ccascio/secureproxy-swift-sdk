@@ -2,7 +2,10 @@ import SwiftUI
 import SecureProxySDK
 
 struct ChatView: View {
-    @StateObject private var manager = SecureProxyManager(proxyKey: "pk_your_proxy_key_here")
+    @StateObject private var manager = SecureProxyManager(
+        proxyKey: "pk_your_proxy_key_here",
+        secretKey: "sk_your_secret_key_here"
+    )
     @State private var inputText = ""
     @State private var selectedModel = "gpt-4o"
     

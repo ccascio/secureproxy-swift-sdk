@@ -2,7 +2,10 @@ import SwiftUI
 import SecureProxySDK
 
 struct MultiProviderView: View {
-    @StateObject private var manager = SecureProxyManager(proxyKey: "pk_your_proxy_key_here")
+    @StateObject private var manager = SecureProxyManager(
+        proxyKey: "pk_your_proxy_key_here",
+        secretKey: "sk_your_secret_key_here"
+    )
     @State private var prompt = "Explain quantum computing in simple terms"
     @State private var selectedModels: Set<String> = ["gpt-4o", "claude-3-5-sonnet-20241022"]
     @State private var responses: [String: String] = [:]
@@ -209,7 +212,10 @@ struct MultiProviderView: View {
     private func testModel(_ modelId: String) async {
         do {
             let messages = [Message(role: "user", content: prompt)]
-            let response = try await SecureProxyClient(proxyKey: "pk_your_proxy_key_here")
+            let response = try await SecureProxyClient(
+                proxyKey: "pk_your_proxy_key_here",
+                secretKey: "sk_your_secret_key_here"
+            )
                 .chatCompletion(
                     model: modelId,
                     messages: messages,
