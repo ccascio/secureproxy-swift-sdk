@@ -3,7 +3,7 @@
 [![Swift](https://img.shields.io/badge/Swift-5.7+-orange.svg)](https://swift.org)
 [![Platform](https://img.shields.io/badge/Platform-iOS%2013.0+%20|%20macOS%2010.15+-lightgrey.svg)](https://developer.apple.com)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-
+!!!DO NOT USE UNTIL THIS MESSAGE IS CANCELLED!!!
 A lightweight, secure Swift SDK for accessing LLM APIs (OpenAI, Anthropic, Google AI, etc.) without exposing your API keys in client applications.
 
 ## 🔐 Why SecureProxy?
@@ -113,6 +113,7 @@ The SDK works with major LLM providers through SecureProxy:
 | **Anthropic** | `claude-3-5-sonnet-20241022`, `claude-3-haiku-20240307` | Text, Analysis |
 | **Google AI** | `gemini-1.5-pro`, `gemini-1.5-flash` | Text, Vision, Code |
 | **Cohere** | `command-r-plus`, `command-r` | Text, Chat |
+| **100+ more LLMs** | ... | ... |
 
 > **Note**: You configure which providers to use in your SecureProxy dashboard, not in the SDK.
 
