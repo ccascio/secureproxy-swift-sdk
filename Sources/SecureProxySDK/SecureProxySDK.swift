@@ -3,6 +3,7 @@
 // A lightweight Swift SDK for SecureProxy LLM API service
 
 import Foundation
+import SwiftUI
 
 // MARK: - Public Types
 
@@ -281,5 +282,87 @@ private extension SecureProxyClient {
         }
         
         return ChatResponse(id: id, choices: choices, usage: usage)
+    }
+}
+
+// MARK: - SwiftUI Integration
+
+@available(iOS 13.0, macOS 10.15, tvOS 13.0, watchOS 6.0, *)
+@MainActor
+public class SecureProxyManager: ObservableObject {
+    private let client: SecureProxyClient
+    
+    @Published public var isLoading = false
+    @Published public var lastError: SecureProxyError?
+    @Published public var messages: [Message] = []
+    @Published public var currentResponse = ""
+    
+    public init(proxyKey: String, baseURL: String = "https://api.secureproxy.com") {
+        self.client = SecureProxyClient(proxyKey: proxyKey, baseURL: baseURL)
+    }
+    
+    public func sendMessage(_ content: String, model: String = "gpt-4o") async {
+        guard !isLoading else { return }
+        
+        isLoading = true
+        lastError = nil
+        
+        let userMessage = Message(role: "user", content: content)
+        messages.append(userMessage)
+        
+        do {
+            let response = try await client.chatCompletion(
+                model: model,
+                messages: messages
+            )
+            
+            if let assistantMessage = response.choices.first?.message {
+                messages.append(assistantMessage)
+                if case .text(let text) = assistantMessage.content {
+                    currentResponse = text
+                }
+            }
+        } catch let error as SecureProxyError {
+            lastError = error
+            messages.removeLast() // Remove the user message if failed
+        } catch {
+            lastError = .networkError(error)
+            messages.removeLast() // Remove the user message if failed
+        }
+        
+        isLoading = false
+    }
+    
+    public func analyzeImage(prompt: String, imageURL: URL, model: String = "gpt-4o") async {
+        guard !isLoading else { return }
+        
+        isLoading = true
+        lastError = nil
+        currentResponse = ""
+        
+        do {
+            let response = try await client.vision(
+                prompt: prompt,
+                imageURL: imageURL,
+                model: model
+            )
+            currentResponse = response
+        } catch let error as SecureProxyError {
+            lastError = error
+        } catch {
+            lastError = .networkError(error)
+        }
+        
+        isLoading = false
+    }
+    
+    public func clearConversation() {
+        messages.removeAll()
+        currentResponse = ""
+        lastError = nil
+    }
+    
+    public func clearError() {
+        lastError = nil
     }
 }
